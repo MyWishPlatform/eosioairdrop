@@ -11,7 +11,7 @@ private:
 	struct drop {
 		eosio::symbol_type symbol;
 		account_name user;
-        uint64_t primary_key() const { return symbol.name(); }
+		uint64_t primary_key() const { return symbol.name(); }
 	};
 
 	typedef eosio::multi_index<N(drop), drop> drop_index;
