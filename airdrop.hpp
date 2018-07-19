@@ -4,8 +4,6 @@
 #include <eosiolib/vector.hpp>
 #include <eosiolib/eosio.hpp>
 
-#include <string>
-
 class airdrop : public eosio::contract {
 private:
 	struct drop {
