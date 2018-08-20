@@ -1,1 +1,1 @@
-python3 test/test_airdrop.py
+python3 test/unittest_airdrop.py
