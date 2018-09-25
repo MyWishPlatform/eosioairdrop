@@ -1,7 +1,5 @@
 NAME=airdrop
 
 all:
-	rm -rf $(NAME)
-	mkdir $(NAME)
+	rm -rf $(NAME)/*.w*
 	eosiocpp -o $(NAME)/$(NAME).wast $(NAME).cpp
-	eosiocpp -g $(NAME)/$(NAME).abi $(NAME).cpp
