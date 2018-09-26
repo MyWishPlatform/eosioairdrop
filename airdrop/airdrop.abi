@@ -20,6 +20,9 @@
       "name": "drop",
       "base": "",
       "fields": [{
+          "name": "issuer",
+          "type": "name"
+        },{
           "name": "token_contract",
           "type": "name"
         },{
@@ -37,12 +40,22 @@
       "name": "withdraw",
       "base": "",
       "fields": [{
+          "name": "issuer",
+          "type": "name"
+        },{
           "name": "token_contract",
           "type": "name"
         },{
           "name": "value",
           "type": "asset"
         }
+      ]
+    },{
+      "name": "drop_t",
+      "base": "",
+      "fields": [
+        {"name":"issuer", "type":"name"},
+        {"name":"token_contract", "type":"name"},
       ]
     }
   ],
@@ -60,7 +73,18 @@
       "ricardian_contract": ""
     }
   ],
-  "tables": [],
+  "tables": [{
+      "name": "drop",
+      "index_type": "i128",
+      "key_names": [
+        "pk"
+      ],
+      "key_types": [
+        "uint128"
+      ],
+      "type": "drop_t"
+    }
+  ],
   "ricardian_clauses": [],
   "error_messages": [],
   "abi_extensions": []
