@@ -24,6 +24,7 @@ void airdrop::drop(account_name issuer, account_name token_contract, eosio::symb
 	eosio_assert(addresses.size() == amounts.size(), "Lengths not match");
 	eosio::extended_asset value(eosio::asset(0, symbol), token_contract);
 	for (int i = 0; i < addresses.size(); i++) {
+		eosio_assert(is_account(addresses[i]), ("account '" + eosio::name{addresses[i]}.to_string() + "' does not exist").c_str());
 		value.set_amount(amounts[i]);
 		eosio::currency::inline_transfer(this->_self, addresses[i], value, "airdrop");
 	}

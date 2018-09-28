@@ -54,8 +54,9 @@
       "name": "drop_t",
       "base": "",
       "fields": [
-        {"name":"issuer", "type":"name"},
-        {"name":"token_contract", "type":"name"},
+        {"name":"pk", "type":"uint64"},
+        {"name":"contract", "type":"name"},
+        {"name":"symbol", "type":"symbol"}
       ]
     }
   ],
@@ -75,12 +76,12 @@
   ],
   "tables": [{
       "name": "drop",
-      "index_type": "i128",
+      "index_type": "i64",
       "key_names": [
         "pk"
       ],
       "key_types": [
-        "uint128"
+        "uint64"
       ],
       "type": "drop_t"
     }
