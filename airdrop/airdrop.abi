@@ -6,6 +6,9 @@
       "name": "create",
       "base": "",
       "fields": [{
+          "name": "pk",
+          "type": "uint64"
+        },{
           "name": "issuer",
           "type": "name"
         },{
@@ -14,20 +17,17 @@
         },{
           "name": "symbol",
           "type": "symbol"
+        },{
+          "name": "drops",
+          "type": "uint64"
         }
       ]
     },{
       "name": "drop",
       "base": "",
       "fields": [{
-          "name": "issuer",
-          "type": "name"
-        },{
-          "name": "token_contract",
-          "type": "name"
-        },{
-          "name": "symbol",
-          "type": "symbol"
+          "name": "pk",
+          "type": "uint64"
         },{
           "name": "addresses",
           "type": "name[]"
@@ -40,11 +40,8 @@
       "name": "withdraw",
       "base": "",
       "fields": [{
-          "name": "issuer",
-          "type": "name"
-        },{
-          "name": "token_contract",
-          "type": "name"
+          "name": "pk",
+          "type": "uint64"
         },{
           "name": "value",
           "type": "asset"
@@ -55,8 +52,9 @@
       "base": "",
       "fields": [
         {"name":"pk", "type":"uint64"},
-        {"name":"contract", "type":"name"},
-        {"name":"symbol", "type":"symbol"}
+        {"name":"issuer", "type":"name"},
+        {"name":"available", "type":"extended_asset"},
+        {"name":"drops", "type":"uint64"}
       ]
     }
   ],
@@ -78,10 +76,12 @@
       "name": "drop",
       "index_type": "i64",
       "key_names": [
-        "pk"
+        "pk",
+        "sk"
       ],
       "key_types": [
-        "uint64"
+        "uint64",
+        "uint128"
       ],
       "type": "drop_t"
     }

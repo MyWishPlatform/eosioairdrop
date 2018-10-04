@@ -1,52 +1,64 @@
 #include "airdrop.hpp"
 #include "override.hpp"
 
-void airdrop::on_deposit(account_name issuer, eosio::extended_asset value) {
-	drop_index drops(this->_self, issuer);
-	auto composite_index = drops.get_index<N(contractsymb)>();
-	auto it = composite_index.find(PK(value.contract, value.symbol));
-	eosio_assert(it != composite_index.end(), "No such airdrop");
-	composite_index.modify(it, this->_self, [value](auto& d) {
+void airdrop::on_deposit(uint64_t pk, eosio::extended_asset value) {
+	drop_index drop_table(this->_self, this->_self);
+	auto it = drop_table.find(pk);
+	eosio_assert(it != drop_table.end(), "No such airdrop");
+	drop_table.modify(it, this->_self, [value](auto& d) {
 		d.available += value;
 	});
 }
 
-void airdrop::create(account_name issuer, account_name token_contract, eosio::symbol_type symbol) {
+void airdrop::create(uint64_t pk, account_name issuer, account_name token_contract, eosio::symbol_type symbol, uint64_t drops) {
 	require_auth(this->_self);
-	drop_index drops(this->_self, issuer);
-	auto composite_index = drops.get_index<N(contractsymb)>();
-	eosio_assert(composite_index.find(PK(token_contract, symbol)) == composite_index.end(), "Airdrop already exists");
-	drops.emplace(this->_self, [&](auto& d) {
-		d.pk = drops.available_primary_key();
+	drop_index drop_table(this->_self, this->_self);
+	drop_table.emplace(this->_self, [&](auto& d) {
+		d.pk = pk;
+		d.issuer = issuer;
 		d.available = eosio::extended_asset(eosio::asset(0, symbol), token_contract);
+		d.drops = drops;
 	});
 }
 
-void airdrop::drop(account_name issuer, account_name token_contract, eosio::symbol_type symbol, eosio::vector<account_name> addresses, eosio::vector<int64_t> amounts) {
-	require_auth(issuer);
+void airdrop::drop(uint64_t pk, eosio::vector<account_name> addresses, eosio::vector<int64_t> amounts) {
+	drop_index drop_table(this->_self, this->_self);
+	auto it = drop_table.find(pk);
+	eosio_assert(it != drop_table.end(), "Airdrop not registered");
 
-	drop_index drops(this->_self, issuer);
-	auto composite_index = drops.get_index<N(contractsymb)>();
-
-	auto record = composite_index.find(PK(token_contract, symbol));
-	eosio_assert(record != composite_index.end(), "Airdrop not registered");
+	require_auth(it->issuer);
 
 	eosio_assert(addresses.size() == amounts.size(), "Lengths not match");
-	eosio::extended_asset value(eosio::asset(0, symbol), token_contract);
+	eosio_assert(addresses.size() <= it->drops, "Too much targets");
+
+	int64_t total_amount = it->available.amount;
+	eosio::extended_asset value(eosio::asset(0, it->available.symbol), it->available.contract);
 	for (int i = 0; i < addresses.size(); i++) {
-			value.set_amount(amounts[i]);
-			eosio::currency::inline_transfer(this->_self, addresses[i], value, "airdrop");
+		total_amount -= amounts[i];
+		value.set_amount(amounts[i]);
+		eosio::currency::inline_transfer(this->_self, addresses[i], value, "Airdrop");
 	}
+
+	eosio_assert(total_amount >= 0, "Not enough tokens on balance");
+
+	drop_table.modify(it, it->issuer, [&](auto& d) {
+		d.drops -= addresses.size();
+		d.available.set_amount(total_amount);
+	});
 }
 
-void airdrop::withdraw(account_name issuer, account_name token_contract, eosio::asset value) {
-	require_auth(issuer);
+void airdrop::withdraw(uint64_t pk, eosio::asset value) {
+	drop_index drop_table(this->_self, this->_self);
+	auto it = drop_table.find(pk);
+	eosio_assert(it != drop_table.end(), "Airdrop not registered");
 
-	drop_index drops(this->_self, issuer);
-	auto composite_index = drops.get_index<N(contractsymb)>();
+	require_auth(it->issuer);
 
-	auto record = composite_index.find(PK(token_contract, value.symbol));
-	eosio_assert(record != composite_index.end(), "Airdrop not registered");
+	drop_table.modify(it, it->issuer, [&](auto& d) {
+		d.available -= value;
+	});
 
-	eosio::currency::inline_transfer(this->_self, issuer, eosio::extended_asset(value, token_contract), "withdraw");
+	eosio_assert(it->available.amount >= 0, "Not enough tokens on balance");
+
+	eosio::currency::inline_transfer(this->_self, it->issuer, eosio::extended_asset(value, it->available.contract), "Withdraw");
 }
