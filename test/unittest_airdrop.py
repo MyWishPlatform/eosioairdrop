@@ -65,19 +65,21 @@ class AirdropTests(unittest.TestCase):
         contract_airdrop.push_action(
             "create",
                 {
+                    "pk": 1,
                     "issuer": owner,
                     "token_contract": deployer_token,
-                    "asset": "0.0000 TST"
+                    "symbol": "4,TST",
+                    "drops": 10
                 },
                 permission=[(master.name, Permission.ACTIVE), (deployer_airdrop.name, Permission.ACTIVE)])
 
-        cprint(""" 3. Token holder should issue currency to airdrop contract """, 'green')
+        cprint(""" 3. Token holder should issue currency to account """, 'green')
         contract_token.push_action(
             "issue",
                 {
                     "to":       deployer_airdrop.name,
                     "quantity": "100.0000 TST",
-                    "memo":     "memo"
+                    "memo":     "1"
                 },
                 permission=[(master.name, Permission.ACTIVE), (owner.name, Permission.ACTIVE)])
 
@@ -134,8 +136,7 @@ class AirdropTests(unittest.TestCase):
             print("receiver{}".format(x))
             receiver = create_account("receiver{}".format(x), master, airdrop["address"][x])
 
-        dropAirdropAction = '{"token_contract":' + deployer_token.name + \
-                            ', "asset": "0.0000 TST"' + \
+        dropAirdropAction = '{"pk":' + "1" + \
                             ', "addresses": [' + airAddresses + \
                             '], "amounts": [' + airAmounts + ']}'
 
@@ -148,12 +149,17 @@ class AirdropTests(unittest.TestCase):
         cprint(""" Tests for checking values """, "red")
         cprint(""" 6. Issuer should withdraw tokens from airdrop contract """, 'green')
 
+        withdrawPk = "1"
         withdrawValue = "1.0000 TST"
-        withdrawAirdropAction = '{"token_contract":' + str(deployer_token) + \
+        withdrawAirdropAction = '{"pk": "' + withdrawPk + \
+                                ', "token_contract":' + str(deployer_token) + \
                                 ', "value": "' + withdrawValue + '"}'
 
         contract_airdrop.push_action("withdraw",
-                                     withdrawAirdropAction,
+                                     {
+                                         "pk": withdrawPk,
+                                         "value": withdrawValue
+                                     },
                                      permission=[(master.name, Permission.ACTIVE), (owner.name, Permission.ACTIVE)])
 
         balanceIssuer = contract_token.table("accounts", owner.name).json["rows"][0]["balance"][:-4]
