@@ -8,6 +8,20 @@ from classes import *
 verbosity([Verbosity.INFO, Verbosity.OUT, Verbosity.TRACE, Verbosity.DEBUG])
 
 
+global airdrop_csv
+with open('test/eos_airdrop.csv') as table:
+    reader = csv.DictReader(table, delimiter=",", skipinitialspace=True)
+    airdrop_csv = {}
+    for row in reader:
+        for address, amount in row.items():
+            airdrop_csv.setdefault(address, list()).append(amount)
+
+    global air_addresses
+    air_addresses = ', '.join(map('{0}'.format, airdrop_csv["address"]))
+    global air_amounts
+    air_amounts = ', '.join(map('{0}'.format, airdrop_csv["amount"]))
+
+
 class AirdropTests(unittest.TestCase):
 
     def run(self, result=None):
@@ -107,16 +121,6 @@ class AirdropTests(unittest.TestCase):
                 permission=(airdrop_account, Permission.ACTIVE))
 
         cprint(""" 5. Action `drop` should transfer tokens  """, 'green')
-        global airdrop_csv
-        with open('test/eos_airdrop.csv') as table:
-            reader = csv.DictReader(table, delimiter=",", skipinitialspace=True)
-            airdrop_csv = {}
-            for row in reader:
-                for address, amount in row.items():
-                    airdrop_csv.setdefault(address, list()).append(amount)
-
-        air_addresses = ', '.join(map('{0}'.format, airdrop_csv["address"]))
-        air_amounts = ', '.join(map('{0}'.format, airdrop_csv["amount"]))
 
         # create accounts because you can't transfer to non-existing account, this is not ethereum lol
         for x in range(len(airdrop_csv["address"])):
@@ -138,7 +142,6 @@ class AirdropTests(unittest.TestCase):
 
         cprint(""" 7. Transferred tokens should exist on accounts """, 'green')
         decimals = 10 ** token1.decimals
-        print(decimals)
 
         for address in range(len(airdrop_csv["address"])):
             account = airdrop_csv["address"][address]
@@ -148,10 +151,29 @@ class AirdropTests(unittest.TestCase):
             assert (balance == expected_balance_sym)
 
     def test_04(self):
+        cprint(""" 8. Check second token on the same airdrop works correctly """)
         global token2
         token2 = Token(2, deployer_token2, 2, "WISH")
+        decimals2 = 10 ** token2.decimals
         token2.deploy()
         token2.create(owner.name)
+        airdrop_contract.create(
+            token2.pk,
+            token2.owner,
+            token2.account.name,
+            token2.decimals,
+            token2.symbol,
+            10
+        )
+        token2.issue(airdrop_contract.account.name, 100, token2.pk)
+        airdrop_contract.drop(token2.pk, token2.owner, air_addresses, air_amounts)
+        for address in range(len(airdrop_csv["address"])):
+            account = airdrop_csv["address"][address]
+            balance = token2.get_balance(account)
+            expected_balance = int(airdrop_csv["amount"][address]) / decimals2
+            expected_balance_sym = "{} {}".format(expected_balance, token2.symbol)
+            assert (balance == expected_balance_sym)
+
 
     def tearDown(self):
         pass
