@@ -131,17 +131,8 @@ class AirdropTests(unittest.TestCase):
         cprint(""" 6. Issuer should withdraw tokens from airdrop contract """, 'green')
 
         withdraw_value = "1.0000 TST"
-        # withdrawAirdropAction = '{"pk": "' + withdrawPk + \
-        #                         ', "token_contract":' + str(deployer_token) + \
-        #                         ', "value": "' + withdrawValue + '"}'
-
         airdrop_contract.withdraw(token1.pk, token1.owner, withdraw_value)
-        # contract_airdrop.push_action("withdraw",
-        #                              {
-        #                                  "pk": withdrawPk,
-        #                                  "value": withdrawValue
-        #                              },
-        #                              permission=[(master.name, Permission.ACTIVE), (owner.name, Permission.ACTIVE)])
+E)])
 
         balance_owner = token1.get_balance(owner)
         assert (balance_owner == withdraw_value)
