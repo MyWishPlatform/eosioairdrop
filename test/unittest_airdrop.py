@@ -3,6 +3,7 @@ import csv
 from termcolor import cprint
 from eosfactory.eosf import *
 import unittest
+from classes import *
 
 verbosity([Verbosity.INFO, Verbosity.OUT, Verbosity.TRACE, Verbosity.DEBUG])
 
@@ -24,17 +25,9 @@ class AirdropTests(unittest.TestCase):
         Create test accounts:
         ''')
         create_account("owner", master)
-        create_account("deployer_token", master)
+        create_account("deployer_token1", master)
+        create_account("deployer_token2", master)
         create_account("deployer_airdrop", master)
-
-        global contract_token
-        contract_token = Contract(
-            deployer_token,
-            "eosio.token",
-            abi_file="eosio.token.abi",
-            wasm_file="eosio.token.wasm"
-        )
-        contract_token.deploy()
 
         global contract_airdrop
         contract_airdrop = Contract(
@@ -52,44 +45,39 @@ class AirdropTests(unittest.TestCase):
     def test_01(self):
         cprint(""" Tests for initialize """, "red")
         cprint(""" 1. Action `create` should be executed at token contract """, 'green')
-        contract_token.push_action(
-            "create",
-                {
-                    "issuer": owner,
-                    "maximum_supply": "1000000000.0000 TST"
-                },
-                permission=[(master.name, Permission.ACTIVE), (deployer_token.name, Permission.ACTIVE)])
-
+        global token1
+        token1 = Token(1, deployer_token1, 4, "TST")
+        token1.deploy()
+        token1.create(owner.name)
 
         cprint(""" 2. Action `create` should be executed at airdrop contract """, 'green')
-        contract_airdrop.push_action(
-            "create",
-                {
-                    "pk": 1,
-                    "issuer": owner,
-                    "token_contract": deployer_token,
-                    "symbol": "4,TST",
-                    "drops": 10
-                },
-                permission=[(master.name, Permission.ACTIVE), (deployer_airdrop.name, Permission.ACTIVE)])
+        global airdrop_contract
+        airdrop_contract = Airdrop(deployer_airdrop)
+        airdrop_contract.deploy()
+        airdrop_contract.create(
+            token1.pk,
+            token1.owner,
+            token1.account.name,
+            token1.decimals,
+            token1.symbol,
+            10
+        )
 
         cprint(""" 3. Token holder should issue currency to account """, 'green')
-        contract_token.push_action(
-            "issue",
-                {
-                    "to":       deployer_airdrop.name,
-                    "quantity": "100.0000 TST",
-                    "memo":     "1"
-                },
-                permission=[(master.name, Permission.ACTIVE), (owner.name, Permission.ACTIVE)])
+        token1.issue(airdrop_contract.account.name, 100, token1.pk)
 
     def test_02(self):
         cprint(""" Tests for calling methods """, "red")
         cprint(""" 4. Airdrop contract permissions should be updated """, 'green')
 
-        airdrop_account_pubkey = deployer_airdrop.json["permissions"][1]["required_auth"]["keys"][0]["key"]
+        # This is (i really hope) temporary fix to manually set permission "eosio.code"
+        # on account of contract through pushing action "updateauth"  on system (eosio)
+        # account with custom setted permission with keys because EOSFACTORY for now
+        # did not implemented this functionalty yet
+        airdrop_account = airdrop_contract.account
+        airdrop_account_pubkey = airdrop_account.json["permissions"][1]["required_auth"]["keys"][0]["key"]
         permissionActionJSON = {
-            "account": deployer_airdrop.name,
+            "account": airdrop_account.name,
             "permission": "active",
             "parent": "owner",
             "auth": {
@@ -103,7 +91,7 @@ class AirdropTests(unittest.TestCase):
                 "accounts": [
                     {
                         "permission": {
-                            "actor": deployer_airdrop.name,
+                            "actor": airdrop_account.name,
                             "permission": "eosio.code"
                         },
                         "weight": 1
@@ -116,63 +104,58 @@ class AirdropTests(unittest.TestCase):
         master.push_action(
                 "updateauth",
                 permissionActionJSON,
-                permission=(deployer_airdrop.name, Permission.ACTIVE))
+                permission=(airdrop_account, Permission.ACTIVE))
 
         cprint(""" 5. Action `drop` should transfer tokens  """, 'green')
-        global airdrop
+        global airdrop_csv
         with open('test/eos_airdrop.csv') as table:
             reader = csv.DictReader(table, delimiter=",", skipinitialspace=True)
-            airdrop = {}
+            airdrop_csv = {}
             for row in reader:
                 for address, amount in row.items():
-                    airdrop.setdefault(address, list()).append(amount)
+                    airdrop_csv.setdefault(address, list()).append(amount)
 
-        airAddresses = ', '.join(map('{0}'.format, airdrop["address"]))
-        airAmounts = ', '.join(map('{0}'.format, airdrop["amount"]))
+        air_addresses = ', '.join(map('{0}'.format, airdrop_csv["address"]))
+        air_amounts = ', '.join(map('{0}'.format, airdrop_csv["amount"]))
 
-        # create accounts because you can't transfer to account that doesn't exist
-        for x in range(len(airdrop["address"])):
-            print(airdrop["address"][x])
+        # create accounts because you can't transfer to non-existing account, this is not ethereum lol
+        for x in range(len(airdrop_csv["address"])):
+            print(airdrop_csv["address"][x])
             print("receiver{}".format(x))
-            receiver = create_account("receiver{}".format(x), master, airdrop["address"][x])
+            receiver = create_account("receiver{}".format(x), master, airdrop_csv["address"][x])
 
-        dropAirdropAction = '{"pk":' + "1" + \
-                            ', "addresses": [' + airAddresses + \
-                            '], "amounts": [' + airAmounts + ']}'
-
-        contract_airdrop.push_action(
-            "drop",
-            dropAirdropAction,
-            permission=(owner.name, Permission.ACTIVE))
+        airdrop_contract.drop(token1.pk, token1.owner, air_addresses, air_amounts)
 
     def test_03(self):
         cprint(""" Tests for checking values """, "red")
         cprint(""" 6. Issuer should withdraw tokens from airdrop contract """, 'green')
 
-        withdrawPk = "1"
-        withdrawValue = "1.0000 TST"
-        withdrawAirdropAction = '{"pk": "' + withdrawPk + \
-                                ', "token_contract":' + str(deployer_token) + \
-                                ', "value": "' + withdrawValue + '"}'
+        withdraw_value = "1.0000 TST"
+        # withdrawAirdropAction = '{"pk": "' + withdrawPk + \
+        #                         ', "token_contract":' + str(deployer_token) + \
+        #                         ', "value": "' + withdrawValue + '"}'
 
-        contract_airdrop.push_action("withdraw",
-                                     {
-                                         "pk": withdrawPk,
-                                         "value": withdrawValue
-                                     },
-                                     permission=[(master.name, Permission.ACTIVE), (owner.name, Permission.ACTIVE)])
+        airdrop_contract.withdraw(token1.pk, token1.owner, withdraw_value)
+        # contract_airdrop.push_action("withdraw",
+        #                              {
+        #                                  "pk": withdrawPk,
+        #                                  "value": withdrawValue
+        #                              },
+        #                              permission=[(master.name, Permission.ACTIVE), (owner.name, Permission.ACTIVE)])
 
-        balanceIssuer = contract_token.table("accounts", owner.name).json["rows"][0]["balance"][:-4]
-        assert (balanceIssuer == withdrawValue[:-4])
+        balance_owner = token1.get_balance(owner)
+        assert (balance_owner == withdraw_value)
 
         cprint(""" 7. Transferred tokens should exist on accounts """, 'green')
-        decimals = 10 ** 4
+        decimals = 10 ** token1.decimals
+        print(decimals)
 
-        for account in range(len(airdrop["address"])):
-            balance = float(
-                contract_token.table("accounts", airdrop["address"][account]).json["rows"][0]["balance"][:-4])
-            expectedBalance = int(airdrop["amount"][account]) / decimals
-            assert (balance == expectedBalance)
+        for address in range(len(airdrop_csv["address"])):
+            account = airdrop_csv["address"][address]
+            balance = token1.get_balance(account)
+            expected_balance = int(airdrop_csv["amount"][address]) / decimals
+            expected_balance_sym = "{} {}".format(expected_balance, token1.symbol)
+            assert (balance == expected_balance_sym)
 
     def tearDown(self):
         pass
