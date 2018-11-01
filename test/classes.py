@@ -5,6 +5,7 @@ class Token:
     pk = None
     account = None
     decimals = None
+    decimals_str = None
     symbol = None
     contract = None
 
@@ -12,6 +13,7 @@ class Token:
         self.pk = str(token_id)
         self.account = token_account
         self.decimals = token_decimals
+        self.decimals_str = str(10 ** token_decimals)[1:]
         self.symbol = token_symbol
 
     def deploy(self):
@@ -29,7 +31,7 @@ class Token:
             "create",
                 {
                     "issuer": self.owner,
-                    "maximum_supply": "1000000000.0000 {}".format(self.symbol)
+                    "maximum_supply": "1000000000.{} {}".format(self.decimals_str, self.symbol)
                 },
                 permission=(self.account, Permission.ACTIVE)
         )
@@ -39,7 +41,7 @@ class Token:
             "issue",
                 {
                     "to":       to,
-                    "quantity": "{}.0000 {}".format(amount, self.symbol),
+                    "quantity": "{}.{} {}".format(amount,self.decimals_str, self.symbol),
                     "memo":     memo
                 },
                 permission=(self.owner, Permission.ACTIVE)

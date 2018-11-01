@@ -132,7 +132,6 @@ class AirdropTests(unittest.TestCase):
 
         withdraw_value = "1.0000 TST"
         airdrop_contract.withdraw(token1.pk, token1.owner, withdraw_value)
-E)])
 
         balance_owner = token1.get_balance(owner)
         assert (balance_owner == withdraw_value)
@@ -147,6 +146,12 @@ E)])
             expected_balance = int(airdrop_csv["amount"][address]) / decimals
             expected_balance_sym = "{} {}".format(expected_balance, token1.symbol)
             assert (balance == expected_balance_sym)
+
+    def test_04(self):
+        global token2
+        token2 = Token(2, deployer_token2, 2, "WISH")
+        token2.deploy()
+        token2.create(owner.name)
 
     def tearDown(self):
         pass
