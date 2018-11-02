@@ -1,3 +1,4 @@
+.PHONY: all test clean
 NAME=airdrop
 
 all:
@@ -5,3 +6,6 @@ all:
 	mkdir build
 	eosiocpp -o build/$(NAME).wast src/$(NAME).cpp
 	cp src/$(NAME).abi build/$(NAME).abi
+
+test:
+	python3 test/unittest_airdrop.py
