@@ -4,25 +4,28 @@ from termcolor import cprint
 from eosfactory.eosf import *
 import unittest
 from classes import *
-
-verbosity([Verbosity.INFO, Verbosity.OUT, Verbosity.TRACE, Verbosity.DEBUG])
-
-
-global airdrop_csv
-with open('test/eos_airdrop.csv') as table:
-    reader = csv.DictReader(table, delimiter=",", skipinitialspace=True)
-    airdrop_csv = {}
-    for row in reader:
-        for address, amount in row.items():
-            airdrop_csv.setdefault(address, list()).append(amount)
-
-    global air_addresses
-    air_addresses = ', '.join(map('{0}'.format, airdrop_csv["address"]))
-    global air_amounts
-    air_amounts = ', '.join(map('{0}'.format, airdrop_csv["amount"]))
+import warnings
+import argparse
 
 
 class AirdropTests(unittest.TestCase):
+
+
+
+    def ignore_warnings(test_func):
+        def do_test(self, *args, **kwargs):
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", ResourceWarning)
+                test_func(self, *args, **kwargs)
+        return do_test
+
+    def create_airdrop_accounts(self, owner, addresses):
+
+        # create accounts because you can't transfer to non-existing account
+        for x in range(len(addresses)):
+            #print(airdrop_csv["address"][x])
+            #print("receiver{}".format(x))
+            receiver = create_account("receiver{}".format(x), owner, addresses[x])
 
     def run(self, result=None):
         """ Stop after first error """
@@ -31,157 +34,232 @@ class AirdropTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        reset()
-        create_wallet()
-        create_master_account('master')
 
-        COMMENT('''
-        Create test accounts:
-        ''')
-        create_account("owner", master)
-        create_account("deployer_token1", master)
-        create_account("deployer_token2", master)
-        create_account("deployer_airdrop", master)
+        global airdrop_csv
+        with open('test/eos_airdrop.csv') as table:
+            reader = csv.DictReader(table, delimiter=",", skipinitialspace=True)
+            airdrop_csv = {}
+            for row in reader:
+                for address, amount in row.items():
+                    airdrop_csv.setdefault(address, list()).append(amount)
+        
+            global air_addresses
+            air_addresses = ', '.join(map('{0}'.format, airdrop_csv["address"]))
+            global air_amounts
+            air_amounts = ', '.join(map('{0}'.format, airdrop_csv["amount"]))
 
-        global contract_airdrop
-        contract_airdrop = Contract(
-            deployer_airdrop,
-            "eosioairdrop",
-            abi_file="build/airdrop.abi",
-            wasm_file="build/airdrop.wasm"
-        )
-        contract_airdrop.deploy()
-
-
-    def setUp(self):
-        pass
-
-    def test_01(self):
-        cprint(""" Tests for initialize """, "red")
-        cprint(""" 1. Action `create` should be executed at token contract """, 'green')
-        global token1
-        token1 = Token(1, deployer_token1, 4, "TST")
-        token1.deploy()
-        token1.create(owner.name)
-
-        cprint(""" 2. Action `create` should be executed at airdrop contract """, 'green')
-        global airdrop_contract
-        airdrop_contract = Airdrop(deployer_airdrop)
-        airdrop_contract.deploy()
-        airdrop_contract.create(
-            token1.pk,
-            token1.owner,
-            token1.account.name,
-            token1.decimals,
-            token1.symbol,
-            10
-        )
-
-        cprint(""" 3. Token holder should issue currency to account """, 'green')
-        token1.issue(airdrop_contract.account.name, 100, token1.pk)
-
-    def test_02(self):
-        cprint(""" Tests for calling methods """, "red")
-        cprint(""" 4. Airdrop contract permissions should be updated """, 'green')
-
-        # This is (i really hope) temporary fix to manually set permission "eosio.code"
-        # on account of contract through pushing action "updateauth"  on system (eosio)
-        # account with custom setted permission with keys because EOSFACTORY for now
-        # did not implemented this functionalty yet
-        airdrop_account = airdrop_contract.account
-        airdrop_account_pubkey = airdrop_account.json["permissions"][1]["required_auth"]["keys"][0]["key"]
-        permissionActionJSON = {
-            "account": airdrop_account.name,
-            "permission": "active",
-            "parent": "owner",
-            "auth": {
-                "threshold": 1,
-                "keys": [
-                    {
-                        "key": str(airdrop_account_pubkey),
-                        "weight": 1
-                    }
-                ],
-                "accounts": [
-                    {
-                        "permission": {
-                            "actor": airdrop_account.name,
-                            "permission": "eosio.code"
-                        },
-                        "weight": 1
-                    }
-                ],
-                "waits": []
-            }
-        }
-
-        master.push_action(
-                "updateauth",
-                permissionActionJSON,
-                permission=(airdrop_account, Permission.ACTIVE))
-
-        cprint(""" 5. Action `drop` should transfer tokens  """, 'green')
-
-        # create accounts because you can't transfer to non-existing account, this is not ethereum lol
-        for x in range(len(airdrop_csv["address"])):
-            print(airdrop_csv["address"][x])
-            print("receiver{}".format(x))
-            receiver = create_account("receiver{}".format(x), master, airdrop_csv["address"][x])
-
-        airdrop_contract.drop(token1.pk, token1.owner, air_addresses, air_amounts)
-
-    def test_03(self):
-        cprint(""" Tests for checking values """, "red")
-        cprint(""" 6. Issuer should withdraw tokens from airdrop contract """, 'green')
-
-        withdraw_value = "1.0000 TST"
-        airdrop_contract.withdraw(token1.pk, token1.owner, withdraw_value)
-
-        balance_owner = token1.get_balance(owner)
-        assert (balance_owner == withdraw_value)
-
-        cprint(""" 7. Transferred tokens should exist on accounts """, 'green')
-        decimals = 10 ** token1.decimals
-
-        for address in range(len(airdrop_csv["address"])):
-            account = airdrop_csv["address"][address]
-            balance = token1.get_balance(account)
-            expected_balance = int(airdrop_csv["amount"][address]) / decimals
-            expected_balance_sym = "{} {}".format(expected_balance, token1.symbol)
-            assert (balance == expected_balance_sym)
-
-    def test_04(self):
-        cprint(""" 8. Check second token on the same airdrop works correctly """)
-        global token2
-        token2 = Token(2, deployer_token2, 2, "WISH")
-        decimals2 = 10 ** token2.decimals
-        token2.deploy()
-        token2.create(owner.name)
-        airdrop_contract.create(
-            token2.pk,
-            token2.owner,
-            token2.account.name,
-            token2.decimals,
-            token2.symbol,
-            10
-        )
-        token2.issue(airdrop_contract.account.name, 100, token2.pk)
-        airdrop_contract.drop(token2.pk, token2.owner, air_addresses, air_amounts)
-        for address in range(len(airdrop_csv["address"])):
-            account = airdrop_csv["address"][address]
-            balance = token2.get_balance(account)
-            expected_balance = int(airdrop_csv["amount"][address]) / decimals2
-            expected_balance_sym = "{} {}".format(expected_balance, token2.symbol)
-            assert (balance == expected_balance_sym)
-
-
-    def tearDown(self):
-        pass
 
     @classmethod
     def tearDownClass(cls):
+        pass
+
+    @ignore_warnings
+    def setUp(self):
+        reset()
+        create_wallet()
+        create_master_account('master')
+        self.eosio_account = master
+
+        create_account("owner", master)
+        self.owner = owner
+        create_account("deployer_token1", master)
+        self.token1_account = deployer_token1
+        create_account("deployer_token2", master)
+        self.token2_account = deployer_token2
+        create_account("deployer_airdrop", master)
+        self.airdrop_account = deployer_airdrop
+        create_account("buyer1", master)
+        self.buyer1_acc = buyer1
+        create_account("buyer2", master)
+        self.buyer2_acc = buyer2
+
+        self.main_airdrop = Airdrop(self.airdrop_account)
+        self.main_airdrop.deploy()
+        self.main_airdrop.add_permission(self.eosio_account)
+
+        self.token1 = Token(
+            1,
+            self.owner,
+            self.token1_account,
+            10 ** 8,
+            4,
+            "EOS"
+        )
+        self.token1.deploy()
+
+        self.token2 = Token(
+            2,
+            self.owner,
+            self.token2_account,
+            10 ** 8,
+            4,
+            "WISH"
+        )
+        self.token2.deploy()
+
+        self.token1.create(self.owner, self.token1_account)
+        self.token2.create(self.owner, self.token2_account)
+
+        token1_total_str = self.token1.total_supply()
+        token1_total = self.token1.fromAsset(token1_total_str)
+
+        global amount_supply_first
+        amount_supply_first = int(token1_total["amount"])
+
+        global simple_amount_first
+        simple_amount_first = self.token1.to_quantity(int(amount_supply_first / 2),self.token1.decimals,self.token1.symbol)
+
+        global one_token_first
+        one_token_first = self.token1.to_quantity(1, self.token1.decimals, self.token1.symbol)
+
+        token2_total_str = self.token2.total_supply()
+        token2_total = self.token2.fromAsset(token2_total_str)
+
+        global amount_supply_second
+        amount_supply_second = int(token2_total["amount"])
+
+        global simple_amount_second
+        simple_amount_second = self.token2.to_quantity(int(amount_supply_second / 2),self.token2.decimals,self.token2.symbol)
+
+        global one_token_second
+        one_token_second = self.token2.to_quantity(1, self.token2.decimals, self.token2.symbol)
+
+    def tearDown(self):
         stop()
+
+    def test_01(self):
+        cprint("#1 Tests for initialize ", "magenta")
+        cprint("#1.1 Check successful creating airdrop for first token", 'green')
+        self.main_airdrop.create(
+            self.token1.pk,
+            self.token1.issuer,
+            self.token1.account.name,
+            self.token1.decimals,
+            self.token1.symbol,
+            10
+        )
+
+        cprint("#1.2 Check successful issue from system token to airdrop", 'green')
+        self.token1.issue(self.main_airdrop.account.name, simple_amount_first, self.token1.pk, self.owner)
+
+        cprint("#1.3 Check successful creating airdrop for second token", 'green')
+        self.main_airdrop.create(
+            self.token2.pk,
+            self.token2.issuer,
+            self.token2.account.name,
+            self.token2.decimals,
+            self.token2.symbol,
+            10
+        )
+
+        cprint("#1.4 Check successful issue from custom token to airdrop", 'green')
+        self.token2.issue(self.main_airdrop.account.name, simple_amount_second, self.token2.pk, self.owner)
+
+        cprint("#1.5 Transfer from token with other PK must fail", 'green')
+        with self.assertRaises(errors.Error):
+            self.token1.issue(self.main_airdrop.account.name, simple_amount_first, self.token2.pk, self.owner)
+        with self.assertRaises(errors.Error):
+            self.token2.issue(self.main_airdrop.account.name, simple_amount_second, self.token1.pk, self.owner)
+
+
+    def test_02(self):
+        cprint("#1.6 Action `drop` should transfer tokens  ", 'green')
+        self.main_airdrop.create(
+            self.token1.pk,
+            self.token1.issuer,
+            self.token1.account.name,
+            self.token1.decimals,
+            self.token1.symbol,
+            10
+        )
+        self.token1.issue(self.main_airdrop.account.name, simple_amount_first, self.token1.pk, self.owner)
+
+        self.create_airdrop_accounts(master, airdrop_csv["address"])
+
+        self.main_airdrop.drop(self.token1.pk, self.token1.issuer, air_addresses, air_amounts)
+
+
+    def test_03(self):
+        cprint("#2 Tests for checking values ", "magenta")
+        cprint("#2.1 Issuer should withdraw tokens from airdrop contract ", 'green')
+
+        self.main_airdrop.create(
+            self.token1.pk,
+            self.token1.issuer,
+            self.token1.account.name,
+            self.token1.decimals,
+            self.token1.symbol,
+            10
+        )
+        self.token1.issue(self.main_airdrop.account.name, simple_amount_first, self.token1.pk, self.owner)
+
+        withdraw_value = simple_amount_first
+        self.main_airdrop.withdraw(self.token1.pk, self.token1.issuer, withdraw_value)
+
+        balance_owner = self.token1.get_balance(owner)
+        assert (balance_owner == withdraw_value)
+
+    def test_04(self):
+        cprint("#2.2 Transferred tokens should exist on accounts ", 'green')
+        self.main_airdrop.create(
+            self.token1.pk,
+            self.token1.issuer,
+            self.token1.account.name,
+            self.token1.decimals,
+            self.token1.symbol,
+            10
+        )
+        self.token1.issue(self.main_airdrop.account.name, simple_amount_first, self.token1.pk, self.owner)
+        decimals = 10 ** self.token1.decimals
+        self.create_airdrop_accounts(master, airdrop_csv["address"])
+        self.main_airdrop.drop(self.token1.pk, self.token1.issuer, air_addresses, air_amounts)
+        
+        for address in range(len(airdrop_csv["address"])):
+            account = airdrop_csv["address"][address]
+            balance = self.token1.get_balance(account)
+            expected_balance = int(airdrop_csv["amount"][address]) / decimals
+            expected_balance_sym = "{} {}".format(expected_balance, self.token1.symbol)
+            assert (balance == expected_balance_sym)
+
+    def test_05(self):
+        cprint("#2.3 Check second token on the same airdrop works correctly ", "green")
+        self.main_airdrop.create(
+            self.token1.pk,
+            self.token1.issuer,
+            self.token1.account.name,
+            self.token1.decimals,
+            self.token1.symbol,
+            10
+        )
+        self.main_airdrop.create(
+            self.token2.pk,
+            self.token2.issuer,
+            self.token2.account.name,
+            self.token2.decimals,
+            self.token2.symbol,
+            10
+        )
+        self.token2.issue(self.main_airdrop.account.name, simple_amount_second, self.token2.pk, self.owner)
+
+        self.create_airdrop_accounts(master, airdrop_csv["address"])
+        self.main_airdrop.drop(self.token2.pk, self.token2.issuer, air_addresses, air_amounts)
+        for address in range(len(airdrop_csv["address"])):
+            account = airdrop_csv["address"][address]
+            balance = self.token2.get_balance(account)
+            decimals2 = 10 ** self.token2.decimals
+            expected_balance = int(airdrop_csv["amount"][address]) / decimals2
+            expected_balance_sym = "{} {}".format(expected_balance, self.token2.symbol)
+            assert (balance == expected_balance_sym)
 
 
 if __name__ == "__main__":
+    verbosity([])  # disable logs
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--verbose", help="increase output verbosity",
+                        action="store_true")
+    args = parser.parse_args()
+    if args.verbose:
+        verbosity([Verbosity.INFO, Verbosity.OUT, Verbosity.TRACE, Verbosity.DEBUG])
+        print("verbosity turned on")
     unittest.main()
